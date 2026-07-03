@@ -533,7 +533,10 @@ if [[ "${U_ENABLE_OPEN_WEBUI}" == "true" ]]; then
   COMPOSE_DOWN_ARGS+=("-f" "${REPO_ROOT}/deploy-artifacts/docker-compose.open-webui.yml")
 fi
 
-# Clean up any existing containers with these names before starting to prevent daemon naming conflicts
+# Get the current Docker Compose project name (corresponds to directory name containing the Compose file)
+PROJECT_NAME=$(basename "$(dirname "${COMPOSE_FILE}")")
+
+# Inspect existing container status and project labels
 if ! CONTAINER_STATE=$(docker inspect --format='{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null); then
   CONTAINER_STATE="absent"
 fi
@@ -545,16 +548,38 @@ if [[ "${U_ENABLE_OPEN_WEBUI}" == "true" ]]; then
   fi
 fi
 
+VLLM_PROJECT=""
 if [[ "${CONTAINER_STATE}" != "absent" ]]; then
-  warn "Container '${CONTAINER_NAME}' already exists (status: ${CONTAINER_STATE}). Removing to prevent conflict..."
-  docker rm -f "${CONTAINER_NAME}" &>/dev/null || true
-  CONTAINER_STATE="absent"
+  VLLM_PROJECT=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "${CONTAINER_NAME}" 2>/dev/null || true)
+fi
+
+WEBUI_PROJECT=""
+if [[ "${U_ENABLE_OPEN_WEBUI}" == "true" && "${WEBUI_STATE}" != "absent" ]]; then
+  WEBUI_PROJECT=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "${U_OPEN_WEBUI_CONTAINER_NAME}" 2>/dev/null || true)
+fi
+
+# Clean up existing containers only if they belong to a different project (preventing naming conflicts)
+# or if they are in a broken state (exited/dead/restarting).
+if [[ "${CONTAINER_STATE}" != "absent" ]]; then
+  if [[ "${VLLM_PROJECT}" != "${PROJECT_NAME}" || \
+        "${CONTAINER_STATE}" == "exited" || \
+        "${CONTAINER_STATE}" == "dead" || \
+        "${CONTAINER_STATE}" == "restarting" ]]; then
+    warn "Removing container '${CONTAINER_NAME}' (status: ${CONTAINER_STATE}, project: ${VLLM_PROJECT:-none}) to prevent conflict..."
+    docker rm -f "${CONTAINER_NAME}" &>/dev/null || true
+    CONTAINER_STATE="absent"
+  fi
 fi
 
 if [[ "${U_ENABLE_OPEN_WEBUI}" == "true" && "${WEBUI_STATE}" != "absent" ]]; then
-  warn "Container '${U_OPEN_WEBUI_CONTAINER_NAME}' already exists (status: ${WEBUI_STATE}). Removing to prevent conflict..."
-  docker rm -f "${U_OPEN_WEBUI_CONTAINER_NAME}" &>/dev/null || true
-  WEBUI_STATE="absent"
+  if [[ "${WEBUI_PROJECT}" != "${PROJECT_NAME}" || \
+        "${WEBUI_STATE}" == "exited" || \
+        "${WEBUI_STATE}" == "dead" || \
+        "${WEBUI_STATE}" == "restarting" ]]; then
+    warn "Removing container '${U_OPEN_WEBUI_CONTAINER_NAME}' (status: ${WEBUI_STATE}, project: ${WEBUI_PROJECT:-none}) to prevent conflict..."
+    docker rm -f "${U_OPEN_WEBUI_CONTAINER_NAME}" &>/dev/null || true
+    WEBUI_STATE="absent"
+  fi
 fi
 
 # Port availability and conflict checks
