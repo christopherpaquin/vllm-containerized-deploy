@@ -31,7 +31,12 @@ if [[ ! -f "${COMPOSE_FILE}" ]]; then
 fi
 
 # --- Check current container state -------------------------------------------
-CONTAINER_STATE=$(docker inspect --format='{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null || echo "absent")
+# A failed `docker inspect --format=` prints a stray empty line to stdout
+# before it exits non-zero, so `X=$(cmd || echo fallback)` would capture
+# "\nabsent" instead of "absent". Check the exit status explicitly instead.
+if ! CONTAINER_STATE=$(docker inspect --format='{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null); then
+  CONTAINER_STATE="absent"
+fi
 
 if [[ "${CONTAINER_STATE}" == "absent" ]]; then
   warn "Container '${CONTAINER_NAME}' does not exist. Stack may already be down."
@@ -65,5 +70,5 @@ fi
 
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════╗${RESET}"
 echo -e "${GREEN}${BOLD}║   vLLM server stopped. GPUs are free.                   ║${RESET}"
-echo -e "${GREEN}${BOLD}║   To restart: bash scripts/validate-vram.sh             ║${RESET}"
+echo -e "${GREEN}${BOLD}║   To restart: bash scripts/deploy/validate-vram.sh      ║${RESET}"
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${RESET}"

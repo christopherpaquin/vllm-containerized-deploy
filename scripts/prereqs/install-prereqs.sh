@@ -108,10 +108,11 @@ else
     apt-get update -qq
     apt-get install -y ca-certificates curl gnupg lsb-release
 
-    # Add Docker's official GPG key
+    # Add Docker's official GPG key (--batch --yes: don't hang/fail if the
+    # keyring file already exists from a prior partial run)
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-      | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
 
     # Add the Docker stable repository
@@ -149,16 +150,20 @@ ok "Docker Compose plugin: $(docker compose version --short)"
 # =============================================================================
 step "STEP 3/4 — NVIDIA Container Toolkit"
 
-if dpkg -l | grep -q nvidia-container-toolkit 2>/dev/null; then
-  NCT_VERSION=$(dpkg -l nvidia-container-toolkit | awk '/nvidia-container-toolkit/{print $3}')
+if dpkg -s nvidia-container-toolkit 2>/dev/null | grep -q "ok installed"; then
+  NCT_VERSION=$(dpkg -s nvidia-container-toolkit 2>/dev/null | awk -F': ' '/^Version:/{print $2}')
   ok "nvidia-container-toolkit already installed: ${NCT_VERSION}. Skipping — existing install is never upgraded."
 else
   warn "nvidia-container-toolkit not found."
 
   if confirm "Install nvidia-container-toolkit (required for GPU passthrough to containers)?"; then
-    # Add NVIDIA Container Toolkit repository
+    # Add NVIDIA Container Toolkit repository.
+    # --batch --yes: gpg --dearmor refuses to overwrite an existing keyring
+    # file without confirmation, which would otherwise hang/fail on a
+    # second run (e.g. after a first run's apt-get install itself failed
+    # but the keyring was already written).
     curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
-      | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+      | gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
     curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
       | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
@@ -230,7 +235,7 @@ TOOLS=(jq python3 python3-pip python3-venv)
 MISSING_TOOLS=()
 
 for tool in "${TOOLS[@]}"; do
-  if dpkg -l | grep -q "^ii  ${tool}" 2>/dev/null; then
+  if dpkg -s "${tool}" 2>/dev/null | grep -q "ok installed"; then
     ok "${tool} — already installed."
   else
     warn "${tool} — not found, queuing for installation."

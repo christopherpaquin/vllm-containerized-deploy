@@ -37,13 +37,13 @@ ENV_EXISTS=false
 # Keys this script owns and is allowed to compute/update. Everything else in
 # an existing deploy/.env (MODEL, network settings, HF_TOKEN, optional
 # feature flags, comments, ordering) is never touched.
-TUNED_KEYS=(TENSOR_PARALLEL_SIZE GPU_MEMORY_UTILIZATION MAX_MODEL_LEN SWAP_SPACE QUANTIZATION)
+TUNED_KEYS=(TENSOR_PARALLEL_SIZE GPU_MEMORY_UTILIZATION MAX_MODEL_LEN SWAP_SPACE QUANTIZATION GPU_DEVICE_ID)
 
 # Snapshot the current on-disk value of a tuned key (empty if absent/no file).
 read_env_var() {
   local key="$1"
   [[ "${ENV_EXISTS}" == "true" ]] || return 0
-  grep -E "^${key}=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2-
+  (grep -E "^${key}=" "${ENV_FILE}" 2>/dev/null || true) | tail -1 | cut -d= -f2-
 }
 
 # Replace a key's value in-place if the line exists, else append it.
@@ -63,50 +63,80 @@ if [[ "${ENV_EXISTS}" == "true" ]]; then
   OLD_MAX_MODEL_LEN="$(read_env_var MAX_MODEL_LEN)"
   OLD_SWAP_SPACE="$(read_env_var SWAP_SPACE)"
   OLD_QUANTIZATION="$(read_env_var QUANTIZATION)"
+  OLD_GPU_DEVICE_ID="$(read_env_var GPU_DEVICE_ID)"
 fi
 
 # =============================================================================
-# STEP 1 — Validate nvidia-smi presence
+# STEP 1 — Validate GPU tool presence
 # =============================================================================
-step "STEP 1/4 — Validating nvidia-smi"
+step "STEP 1/4 — Validating GPU Tools"
 
-if ! command -v nvidia-smi &>/dev/null; then
-  fail "nvidia-smi not found. Run scripts/prereqs/install-prereqs.sh first."
+# Detect GPU Type
+GPU_TYPE="unknown"
+if command -v nvidia-smi &>/dev/null; then
+  GPU_TYPE="nvidia"
+elif command -v rocm-smi &>/dev/null || [[ -e /dev/kfd ]]; then
+  GPU_TYPE="amd"
 fi
-ok "nvidia-smi is available."
+
+if [[ "${GPU_TYPE}" == "nvidia" ]]; then
+  ok "nvidia-smi is available."
+elif [[ "${GPU_TYPE}" == "amd" ]]; then
+  ok "rocm-smi / AMD GPU detected."
+else
+  fail "No GPU tools (nvidia-smi or rocm-smi) found. Run scripts/prereqs/install-prereqs.sh first."
+fi
 
 # =============================================================================
 # STEP 2 — Query GPU Topology
 # =============================================================================
 step "STEP 2/4 — Querying GPU Topology"
 
-# Total number of GPUs visible to the system
-GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
-info "Detected GPU count: ${GPU_COUNT}"
+if [[ "${GPU_TYPE}" == "nvidia" ]]; then
+  # Total number of GPUs visible to the system
+  GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+  info "Detected NVIDIA GPU count: ${GPU_COUNT}"
 
-if [[ "${GPU_COUNT}" -lt 1 ]]; then
-  fail "No NVIDIA GPUs detected. Cannot proceed."
+  if [[ "${GPU_COUNT}" -lt 1 ]]; then
+    fail "No NVIDIA GPUs detected. Cannot proceed."
+  fi
+
+  # Collect per-GPU VRAM totals (in MiB)
+  mapfile -t VRAM_LIST < <(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits)
+
+  info "Per-GPU VRAM (MiB):"
+  TOTAL_VRAM_MiB=0
+  for i in "${!VRAM_LIST[@]}"; do
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | sed -n "$((i+1))p")
+    VRAM_MiB="${VRAM_LIST[$i]// /}"  # trim whitespace
+    echo "    GPU ${i}: ${GPU_NAME} — ${VRAM_MiB} MiB"
+    TOTAL_VRAM_MiB=$(( TOTAL_VRAM_MiB + VRAM_MiB ))
+  done
+
+  # Use GPU 0 as reference for per-card VRAM
+  PRIMARY_VRAM_MiB="${VRAM_LIST[0]// /}"
+  PRIMARY_VRAM_GiB=$(echo "scale=1; ${PRIMARY_VRAM_MiB} / 1024" | bc)
+  TOTAL_VRAM_GiB=$(echo "scale=1; ${TOTAL_VRAM_MiB} / 1024" | bc)
+
+  ok "Primary GPU VRAM: ${PRIMARY_VRAM_GiB} GiB (${PRIMARY_VRAM_MiB} MiB)"
+  ok "Total cluster VRAM: ${TOTAL_VRAM_GiB} GiB across ${GPU_COUNT} GPU(s)"
+  GPU_DEVICE_ID="nvidia.com/gpu=all"
+
+elif [[ "${GPU_TYPE}" == "amd" ]]; then
+  GPU_COUNT=$(rocm-smi --showid 2>/dev/null | grep -c 'GPU\[' || echo 1)
+  info "Detected AMD GPU count: ${GPU_COUNT}"
+
+  # Default/fallback VRAM estimations for parameter tuning on AMD if we don't query via rocm-smi.
+  # Assume 16GB primary VRAM as a baseline.
+  PRIMARY_VRAM_MiB=16384
+  PRIMARY_VRAM_GiB=16
+  TOTAL_VRAM_MiB=$(( PRIMARY_VRAM_MiB * GPU_COUNT ))
+  TOTAL_VRAM_GiB=$(( PRIMARY_VRAM_GiB * GPU_COUNT ))
+
+  ok "Primary GPU VRAM (assumed): ${PRIMARY_VRAM_GiB} GiB"
+  ok "Total cluster VRAM (assumed): ${TOTAL_VRAM_GiB} GiB across ${GPU_COUNT} GPU(s)"
+  GPU_DEVICE_ID="amd.com/gpu=all"
 fi
-
-# Collect per-GPU VRAM totals (in MiB)
-mapfile -t VRAM_LIST < <(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits)
-
-info "Per-GPU VRAM (MiB):"
-TOTAL_VRAM_MiB=0
-for i in "${!VRAM_LIST[@]}"; do
-  GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | sed -n "$((i+1))p")
-  VRAM_MiB="${VRAM_LIST[$i]// /}"  # trim whitespace
-  echo "    GPU ${i}: ${GPU_NAME} — ${VRAM_MiB} MiB"
-  TOTAL_VRAM_MiB=$(( TOTAL_VRAM_MiB + VRAM_MiB ))
-done
-
-# Use GPU 0 as reference for per-card VRAM
-PRIMARY_VRAM_MiB="${VRAM_LIST[0]// /}"
-PRIMARY_VRAM_GiB=$(echo "scale=1; ${PRIMARY_VRAM_MiB} / 1024" | bc)
-TOTAL_VRAM_GiB=$(echo "scale=1; ${TOTAL_VRAM_MiB} / 1024" | bc)
-
-ok "Primary GPU VRAM: ${PRIMARY_VRAM_GiB} GiB (${PRIMARY_VRAM_MiB} MiB)"
-ok "Total cluster VRAM: ${TOTAL_VRAM_GiB} GiB across ${GPU_COUNT} GPU(s)"
 
 # =============================================================================
 # STEP 3 — Calculate Safe Inference Parameters
@@ -198,6 +228,7 @@ printf "  %-30s %s\n" "MAX_MODEL_LEN:"        "${MAX_MODEL_LEN} tokens"
 printf "  %-30s %s\n" "GPU_MEMORY_UTILIZATION:" "${GPU_MEMORY_UTILIZATION}"
 printf "  %-30s %s\n" "SWAP_SPACE:"           "${SWAP_SPACE} GiB"
 printf "  %-30s %s\n" "PORT:"                 "${PORT}"
+printf "  %-30s %s\n" "GPU_DEVICE_ID:"        "${GPU_DEVICE_ID}"
 echo ""
 
 # =============================================================================
@@ -243,11 +274,16 @@ SWAP_SPACE=${SWAP_SPACE}
 QUANTIZATION=${QUANTIZATION}
 
 # --- Server Settings ---------------------------------------------------------
+# Host network interface inside container; port inside container
 HOST=${HOST}
 PORT=${PORT}
 
 # --- HuggingFace Cache -------------------------------------------------------
 HF_CACHE_DIR=${HF_CACHE_DIR}
+
+# --- GPU CDI ID --------------------------------------------------------------
+# The device ID used for CDI device reservation in docker-compose.
+GPU_DEVICE_ID=${GPU_DEVICE_ID}
 
 # --- Optional Performance Flags ----------------------------------------------
 # Uncomment to enable speculative decoding (requires a draft model).
@@ -282,6 +318,7 @@ else
   print_diff "MAX_MODEL_LEN"          "${OLD_MAX_MODEL_LEN}"          "${MAX_MODEL_LEN}"
   print_diff "SWAP_SPACE"             "${OLD_SWAP_SPACE}"             "${SWAP_SPACE}"
   print_diff "QUANTIZATION"           "${OLD_QUANTIZATION}"           "${QUANTIZATION}"
+  print_diff "GPU_DEVICE_ID"          "${OLD_GPU_DEVICE_ID}"          "${GPU_DEVICE_ID}"
   echo ""
 
   if [[ "${CHANGED}" == "true" ]]; then
@@ -290,6 +327,7 @@ else
     set_env_var MAX_MODEL_LEN          "${MAX_MODEL_LEN}"
     set_env_var SWAP_SPACE             "${SWAP_SPACE}"
     set_env_var QUANTIZATION           "${QUANTIZATION}"
+    set_env_var GPU_DEVICE_ID          "${GPU_DEVICE_ID}"
     ok "${ENV_FILE} updated — tuned values above applied, nothing else touched."
   else
     ok "No tuned values changed — ${ENV_FILE} left untouched."

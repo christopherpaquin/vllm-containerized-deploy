@@ -193,6 +193,7 @@ else
 
   info "Injecting local vLLM model entry into existing config..."
 
+  set +e
   python3 - <<PYEOF
 import json
 import sys
@@ -203,8 +204,12 @@ api_base     = "${VLLM_API_BASE}"
 model_title  = "${MODEL_TITLE}"
 
 # Load existing config
-with open(config_path, "r") as f:
-    config = json.load(f)
+try:
+    with open(config_path, "r") as f:
+        config = json.load(f)
+except json.JSONDecodeError as e:
+    print(f"  [ERROR] {config_path} is not valid JSON: {e}", file=sys.stderr)
+    sys.exit(1)
 
 # Build new chat model entry
 new_chat_model = {
@@ -266,7 +271,14 @@ with open(config_path, "w") as f:
 
 print(f"  [OK]  {config_path} updated successfully.")
 PYEOF
+  PYTHON_STATUS=$?
+  set -e
 
+  if [[ "${PYTHON_STATUS}" -ne 0 ]]; then
+    warn "Failed to update ${CONFIG_FILE}. Restoring backup from ${BACKUP_FILE}..."
+    cp "${BACKUP_FILE}" "${CONFIG_FILE}"
+    fail "config.json update failed and was rolled back. Fix the JSON syntax error above and re-run."
+  fi
 fi
 
 # =============================================================================
@@ -299,5 +311,5 @@ echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
 echo -e "${GREEN}${BOLD}║   Continue extension is configured for local vLLM.          ║${RESET}"
 echo -e "${GREEN}${BOLD}║   Reload VS Code window (Ctrl+Shift+P → Reload Window)      ║${RESET}"
-echo -e "${GREEN}${BOLD}║   Next step: bash scripts/benchmark.sh                      ║${RESET}"
+echo -e "${GREEN}${BOLD}║   Next step: bash scripts/tuning/benchmark.sh                ║${RESET}"
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
