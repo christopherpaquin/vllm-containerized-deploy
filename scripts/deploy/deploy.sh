@@ -88,6 +88,7 @@ check_port_available() {
   fi
 }
 
+export IN_DEPLOY_FLOW=true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEPLOY_DIR="${REPO_ROOT}/deploy-artifacts"

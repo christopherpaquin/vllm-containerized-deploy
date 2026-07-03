@@ -341,5 +341,7 @@ echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
 echo -e "${GREEN}${BOLD}║  Tuning complete. Config written to scripts/deploy/.env      ║${RESET}"
 echo -e "${GREEN}${BOLD}║  Review and adjust values before launching the server.        ║${RESET}"
-echo -e "${GREEN}${BOLD}║  Next step: bash scripts/deploy/validate-system.sh           ║${RESET}"
+if [[ "${IN_DEPLOY_FLOW:-false}" != "true" ]]; then
+  echo -e "${GREEN}${BOLD}║  Next step: bash scripts/deploy/validate-system.sh           ║${RESET}"
+fi
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
