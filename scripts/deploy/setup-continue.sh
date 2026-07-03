@@ -34,7 +34,7 @@ BACKUP_FILE="${CONTINUE_DIR}/config.json.bak.$(date '+%Y%m%d_%H%M%S')"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ENV_FILE="${REPO_ROOT}/deploy/.env"
+ENV_FILE="${REPO_ROOT}/scripts/deploy/.env"
 
 # Optional first argument: host[:port] of the machine running vLLM.
 # Defaults to localhost:8000 for the common case of running this script
@@ -49,7 +49,7 @@ MODEL_TITLE="Qwen2.5-Coder-32B (vLLM @ ${VLLM_HOST})"
 #      registered in docker-compose.yml (e.g. "qwen2.5-coder-32b-awq").
 #      This is authoritative: it's what API requests must send in the "model"
 #      field for vLLM to accept them.
-#   2. Fall back to MODEL= in deploy/.env if the server is not yet running.
+#   2. Fall back to MODEL= in scripts/deploy/.env if the server is not yet running.
 #      The raw HF path (e.g. "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ") is a
 #      best-effort placeholder — it will NOT match unless served-model-name
 #      is absent from docker-compose.yml.
@@ -81,7 +81,7 @@ else
   fi
   MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-32B-Instruct-AWQ}"
   warn "vLLM server is not reachable at ${VLLM_API_BASE}."
-  warn "Using MODEL_ID from deploy/.env as fallback: ${MODEL_ID}"
+  warn "Using MODEL_ID from scripts/deploy/.env as fallback: ${MODEL_ID}"
   warn "Note: this may NOT match the served-model-name in docker-compose.yml."
   warn "Re-run this script once the server is up for an accurate config."
 fi

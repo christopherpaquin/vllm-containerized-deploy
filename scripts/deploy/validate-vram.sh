@@ -18,7 +18,7 @@ step()  { echo -e "\n${BOLD}─────────────────�
 # --- Configuration -----------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-COMPOSE_FILE="${REPO_ROOT}/deploy/docker-compose.yml"
+COMPOSE_FILE="${REPO_ROOT}/deploy-artifacts/docker-compose.yml"
 CONTAINER_NAME="vllm-coder-server"
 
 MAX_POLLS=30          # Maximum polling iterations
@@ -33,7 +33,7 @@ GPU_COUNT=$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)
 step "STEP 1/2 — Launching vLLM Server"
 
 if [[ ! -f "${COMPOSE_FILE}" ]]; then
-  fail "docker-compose.yml not found at ${COMPOSE_FILE}. Ensure deploy/ directory is set up."
+  fail "docker-compose.yml not found at ${COMPOSE_FILE}. Ensure deploy-artifacts/ directory is set up."
 fi
 
 # --- Clean up a stale crashed/looping container before restarting ------------
@@ -48,11 +48,11 @@ fi
 if [[ "${CONTAINER_STATE}" == "exited" || "${CONTAINER_STATE}" == "dead" || "${CONTAINER_STATE}" == "restarting" ]]; then
   warn "Container '${CONTAINER_NAME}' is in '${CONTAINER_STATE}' state (stale from a previous run)."
   info "Running 'docker compose down' to clear it before restarting..."
-  docker compose -f "${COMPOSE_FILE}" down
+  docker compose --env-file "${REPO_ROOT}/scripts/deploy/.env" -f "${COMPOSE_FILE}" down
 fi
 
 info "Starting container stack from ${COMPOSE_FILE}..."
-docker compose -f "${COMPOSE_FILE}" up -d
+docker compose --env-file "${REPO_ROOT}/scripts/deploy/.env" -f "${COMPOSE_FILE}" up -d
 
 ok "Container started. Monitoring initialization for up to ${STARTUP_TIMEOUT}s..."
 
@@ -99,7 +99,7 @@ for poll in $(seq 1 "${MAX_POLLS}"); do
   vLLM ran out of VRAM during KV cache allocation.
 
   Recommended recovery actions:
-    1. Open deploy/.env and reduce:
+    1. Open scripts/deploy/.env and reduce:
          MAX_MODEL_LEN=8192        (halve the context window)
          GPU_MEMORY_UTILIZATION=0.85
     2. If a display server is active, free GPU 0:

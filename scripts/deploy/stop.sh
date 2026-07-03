@@ -22,7 +22,8 @@ fail()  { echo -e "${RED}=== [✗]  $* ===${RESET}"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-COMPOSE_FILE="${REPO_ROOT}/deploy/docker-compose.yml"
+ENV_FILE="${REPO_ROOT}/scripts/deploy/.env"
+COMPOSE_FILE="${REPO_ROOT}/deploy-artifacts/docker-compose.yml"
 CONTAINER_NAME="vllm-coder-server"
 
 PURGE=false
@@ -50,9 +51,9 @@ fi
 
 # Sourcing .env for Open WebUI variables if present
 set +u
-if [[ -f "${REPO_ROOT}/deploy/.env" ]]; then
-  # shellcheck disable=SC1091
-  source "${REPO_ROOT}/deploy/.env"
+if [[ -f "${ENV_FILE}" ]]; then
+  # shellcheck disable=SC1090,SC1091
+  source "${ENV_FILE}"
 fi
 set -u
 
@@ -69,13 +70,13 @@ fi
 info "vLLM container: ${CONTAINER_STATE} | Open WebUI container: ${WEBUI_STATE}"
 
 # --- Setup compose arguments -------------------------------------------------
-COMPOSE_ARGS=("-f" "${COMPOSE_FILE}")
-OVERRIDE_FILE="${REPO_ROOT}/deploy/docker-compose.override.yml"
+COMPOSE_ARGS=("--env-file" "${ENV_FILE}" "-f" "${COMPOSE_FILE}")
+OVERRIDE_FILE="${REPO_ROOT}/deploy-artifacts/docker-compose.override.yml"
 if [[ -f "${OVERRIDE_FILE}" ]]; then
   COMPOSE_ARGS+=("-f" "${OVERRIDE_FILE}")
 fi
 
-OPEN_WEBUI_COMPOSE="${REPO_ROOT}/deploy/docker-compose.open-webui.yml"
+OPEN_WEBUI_COMPOSE="${REPO_ROOT}/deploy-artifacts/docker-compose.open-webui.yml"
 if [[ -f "${OPEN_WEBUI_COMPOSE}" ]]; then
   if [[ "${ENABLE_OPEN_WEBUI:-false}" == "true" || "${WEBUI_STATE}" != "absent" ]]; then
     COMPOSE_ARGS+=("-f" "${OPEN_WEBUI_COMPOSE}")

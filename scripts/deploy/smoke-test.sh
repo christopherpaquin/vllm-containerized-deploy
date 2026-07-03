@@ -16,7 +16,7 @@ fail()  { echo -e "${RED}=== [✗]  $* ===${RESET}"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ENV_FILE="${REPO_ROOT}/deploy/.env"
+ENV_FILE="${REPO_ROOT}/scripts/deploy/.env"
 
 # --- Defaults ----------------------------------------------------------------
 HOST_IP="127.0.0.1"

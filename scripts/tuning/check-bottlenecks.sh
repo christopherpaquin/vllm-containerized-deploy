@@ -255,7 +255,7 @@ fi
 # =============================================================================
 step "STEP 5/5 — System RAM & Storage (KV-Cache Swap Suitability)"
 
-info "deploy/.env.example's SWAP_SPACE guidance: only beneficial if system RAM"
+info "scripts/deploy/.env.example's SWAP_SPACE guidance: only beneficial if system RAM"
 info ">= 64 GiB and the HuggingFace cache lives on NVMe. This step verifies both."
 echo ""
 
@@ -269,14 +269,14 @@ info "System RAM: ${RAM_TOTAL_GIB} GiB"
 # --- HF cache storage device ---------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ENV_FILE="${REPO_ROOT}/deploy/.env"
+ENV_FILE="${REPO_ROOT}/scripts/deploy/.env"
 
 HF_CACHE_DIR="${HOME}/.cache/huggingface"
 if [[ -f "${ENV_FILE}" ]]; then
   ENV_HF_CACHE_DIR=$(grep '^HF_CACHE_DIR=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' || true)
   [[ -n "${ENV_HF_CACHE_DIR}" ]] && HF_CACHE_DIR="${ENV_HF_CACHE_DIR}"
 else
-  info "deploy/.env not generated yet (run tune-inference.sh) — checking the default HF cache path."
+  info "scripts/deploy/.env not generated yet (run tune-inference.sh) — checking the default HF cache path."
 fi
 
 # Walk up to the nearest existing ancestor so `df` has something to resolve
@@ -329,15 +329,15 @@ fi
 
 echo ""
 if ! [[ "${SWAP_SPACE_VAL}" =~ ^[0-9]+$ ]]; then
-  warn "SWAP_SPACE value '${SWAP_SPACE_VAL}' in deploy/.env is not a plain integer — skipping swap-suitability check."
+  warn "SWAP_SPACE value '${SWAP_SPACE_VAL}' in scripts/deploy/.env is not a plain integer — skipping swap-suitability check."
 elif [[ "${SWAP_SPACE_VAL}" -gt 0 ]]; then
   if [[ "${STORAGE_ROTATIONAL}" == "true" ]]; then
     warn "SWAP_SPACE=${SWAP_SPACE_VAL} GiB is configured, but the HF cache path resolves to a spinning HDD (${STORAGE_DEV})."
     WARNINGS+=("SWAP_SPACE=${SWAP_SPACE_VAL} GiB is set, but KV-cache offload would land on a rotational disk (${STORAGE_DEV}, ${STORAGE_MODEL:-unknown model}) — offloaded requests could stall for seconds instead of milliseconds under burst load.")
-    RECOMMENDATIONS+=("Either set SWAP_SPACE=0 in deploy/.env to disable CPU offload, or move HF_CACHE_DIR to an SSD/NVMe-backed path.")
+    RECOMMENDATIONS+=("Either set SWAP_SPACE=0 in scripts/deploy/.env to disable CPU offload, or move HF_CACHE_DIR to an SSD/NVMe-backed path.")
   elif [[ "${RAM_MEETS_64G}" -eq 0 ]]; then
     warn "SWAP_SPACE=${SWAP_SPACE_VAL} GiB is configured, but system RAM (${RAM_TOTAL_GIB} GiB) is below the 64 GiB the docs recommend for swap to help."
-    RECOMMENDATIONS+=("Consider SWAP_SPACE=0 in deploy/.env — below ~64 GiB system RAM, CPU offload competes with the OS/other processes for memory instead of providing headroom.")
+    RECOMMENDATIONS+=("Consider SWAP_SPACE=0 in scripts/deploy/.env — below ~64 GiB system RAM, CPU offload competes with the OS/other processes for memory instead of providing headroom.")
   else
     ok "SWAP_SPACE=${SWAP_SPACE_VAL} GiB is configured on suitable hardware (${RAM_TOTAL_GIB} GiB RAM, non-rotational storage)."
   fi

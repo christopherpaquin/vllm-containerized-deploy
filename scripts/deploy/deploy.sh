@@ -90,8 +90,8 @@ check_port_available() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-DEPLOY_DIR="${REPO_ROOT}/deploy"
-ENV_FILE="${DEPLOY_DIR}/.env"
+DEPLOY_DIR="${REPO_ROOT}/deploy-artifacts"
+ENV_FILE="${SCRIPT_DIR}/.env"
 COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.yml"
 OVERRIDE_FILE="${DEPLOY_DIR}/docker-compose.override.yml"
 
@@ -486,6 +486,11 @@ services:
 ${OPT_ARGS}
 YAML_EOF
 
+if [[ -n "${SUDO_USER:-}" ]]; then
+  chown "${SUDO_USER}:$(id -gn "${SUDO_USER}")" "${OVERRIDE_FILE}" 2>/dev/null || true
+fi
+chmod 664 "${OVERRIDE_FILE}" 2>/dev/null || true
+
 ok "docker-compose.override.yml written."
 info "Port binding  : ${U_BIND_HOST}:${U_PORT} → container:8000"
 
@@ -523,9 +528,9 @@ fi
 CONTAINER_NAME="vllm-coder-server"
 
 # Sourcing both Compose files if Open WebUI is enabled
-COMPOSE_DOWN_ARGS=("-f" "${COMPOSE_FILE}" "-f" "${OVERRIDE_FILE}")
+COMPOSE_DOWN_ARGS=("--env-file" "${ENV_FILE}" "-f" "${COMPOSE_FILE}" "-f" "${OVERRIDE_FILE}")
 if [[ "${U_ENABLE_OPEN_WEBUI}" == "true" ]]; then
-  COMPOSE_DOWN_ARGS+=("-f" "${REPO_ROOT}/deploy/docker-compose.open-webui.yml")
+  COMPOSE_DOWN_ARGS+=("-f" "${REPO_ROOT}/deploy-artifacts/docker-compose.open-webui.yml")
 fi
 
 # Clean up any stale containers before starting
@@ -553,9 +558,9 @@ if [[ "${U_ENABLE_OPEN_WEBUI}" == "true" ]]; then
 fi
 
 info "Starting container stack..."
-COMPOSE_UP_ARGS=("-f" "${COMPOSE_FILE}" "-f" "${OVERRIDE_FILE}")
+COMPOSE_UP_ARGS=("--env-file" "${ENV_FILE}" "-f" "${COMPOSE_FILE}" "-f" "${OVERRIDE_FILE}")
 if [[ "${U_ENABLE_OPEN_WEBUI}" == "true" ]]; then
-  COMPOSE_UP_ARGS+=("-f" "${REPO_ROOT}/deploy/docker-compose.open-webui.yml")
+  COMPOSE_UP_ARGS+=("-f" "${REPO_ROOT}/deploy-artifacts/docker-compose.open-webui.yml")
 fi
 
 if ! docker compose "${COMPOSE_UP_ARGS[@]}" up -d; then

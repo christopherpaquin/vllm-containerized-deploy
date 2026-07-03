@@ -209,7 +209,7 @@ if [[ "${GPU_TYPE}" == "nvidia" ]]; then
     warn "GPU 0 is consuming ${GPU0_USED} MiB at idle — display server detected."
     warn "vLLM allocates GPU_MEMORY_UTILIZATION from remaining free VRAM."
     warn "Mitigation A: sudo systemctl isolate multi-user.target (kills display)"
-    warn "Mitigation B: Lower GPU_MEMORY_UTILIZATION to 0.85 in deploy/.env"
+    warn "Mitigation B: Lower GPU_MEMORY_UTILIZATION to 0.85 in scripts/deploy/.env"
     WARNINGS+=("GPU 0 has ${GPU0_USED} MiB VRAM used at idle (display server). Lower GPU_MEMORY_UTILIZATION or kill display manager.")
   else
     ok "GPU 0 idle VRAM usage ${GPU0_USED} MiB — below threshold (${DISPLAY_VRAM_THRESHOLD_MiB} MiB). Safe to deploy."
