@@ -395,24 +395,55 @@ set -e
 if [[ ${BOTTLENECK_STATUS} -eq 2 ]]; then
   echo ""
   warn "Performance tuning recommendations found."
-  read -rp "Tuning bottlenecks detected. Do you want to [c] Continue, [i] Implement tunables, or [e] Exit deployment? [c/i/e]: " CHOICE
-  if [[ "${CHOICE}" =~ ^[iI]$ ]]; then
-    info "Applying performance tunables..."
-    # 1. Switch CPU governor to performance
-    if [[ -e "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor" ]]; then
-      echo "performance" | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null || true
+
+  # Check if there are actual implementable software tunables
+  HAS_GOVERNOR_ISSUE=false
+  if [[ -e "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor" ]]; then
+    if grep -q "powersave" /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null; then
+      HAS_GOVERNOR_ISSUE=true
     fi
-    # 2. Enable GPU persistence mode
-    if command -v nvidia-smi &>/dev/null; then
-      nvidia-smi -pm 1 >/dev/null || true
+  fi
+
+  HAS_PERSISTENCE_ISSUE=false
+  if command -v nvidia-smi &>/dev/null; then
+    if nvidia-smi --query-gpu=persistence_mode --format=csv,noheader 2>/dev/null | grep -q "Disabled"; then
+      HAS_PERSISTENCE_ISSUE=true
     fi
-    # 3. Enable Transparent Huge Pages
-    if [[ -w "/sys/kernel/mm/transparent_hugepage/enabled" ]]; then
-      echo "always" | tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null || true
+  fi
+
+  HAS_THP_ISSUE=false
+  if [[ -r "/sys/kernel/mm/transparent_hugepage/enabled" ]]; then
+    if ! grep -q "\[always\]" /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null; then
+      HAS_THP_ISSUE=true
     fi
-    ok "Performance tunables applied successfully."
-  elif [[ "${CHOICE}" =~ ^[eE]$ ]] || [[ ! "${CHOICE}" =~ ^[cC]$ ]]; then
-    fail "Deployment aborted by user."
+  fi
+
+  if [[ "${HAS_GOVERNOR_ISSUE}" == "true" || "${HAS_PERSISTENCE_ISSUE}" == "true" || "${HAS_THP_ISSUE}" == "true" ]]; then
+    read -rp "Tuning bottlenecks detected. Do you want to [c] Continue, [i] Implement tunables, or [e] Exit deployment? [c/i/e]: " CHOICE
+    if [[ "${CHOICE}" =~ ^[iI]$ ]]; then
+      info "Applying performance tunables..."
+      # 1. Switch CPU governor to performance
+      if [[ "${HAS_GOVERNOR_ISSUE}" == "true" ]]; then
+        echo "performance" | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null || true
+      fi
+      # 2. Enable GPU persistence mode
+      if [[ "${HAS_PERSISTENCE_ISSUE}" == "true" ]]; then
+        nvidia-smi -pm 1 >/dev/null || true
+      fi
+      # 3. Enable Transparent Huge Pages
+      if [[ "${HAS_THP_ISSUE}" == "true" ]]; then
+        echo "always" | tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null || true
+      fi
+      ok "Performance tunables applied successfully."
+    elif [[ "${CHOICE}" =~ ^[eE]$ ]] || [[ ! "${CHOICE}" =~ ^[cC]$ ]]; then
+      fail "Deployment aborted by user."
+    fi
+  else
+    # No software tunables, only physical hardware warnings (e.g. PCIe)
+    read -rp "Hardware bottlenecks detected. Do you want to [c] Continue or [e] Exit deployment? [c/e]: " CHOICE
+    if [[ ! "${CHOICE}" =~ ^[cC]$ ]]; then
+      fail "Deployment aborted by user."
+    fi
   fi
 elif [[ ${BOTTLENECK_STATUS} -ne 0 ]]; then
   fail "Performance advisory script failed with critical errors."
