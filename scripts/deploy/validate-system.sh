@@ -152,6 +152,6 @@ if [[ ${#WARNINGS[@]} -gt 0 ]]; then
 else
   echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
   echo -e "${GREEN}${BOLD}║    All checks passed. System is ready.                      ║${RESET}"
-  echo -e "${GREEN}${BOLD}║    Next step: bash scripts/tune-inference.sh                ║${RESET}"
+  echo -e "${GREEN}${BOLD}║    Next step: bash scripts/tuning/tune-inference.sh                ║${RESET}"
   echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
 fi

@@ -2,8 +2,17 @@
 # =============================================================================
 # setup-continue.sh
 # Automated VS Code Continue extension hook.
-# Injects the local vLLM endpoint into ~/.continue/config.json, creating the
-# file with full defaults if it doesn't already exist.
+# Injects a vLLM endpoint into ~/.continue/config.json, creating the file
+# with full defaults if it doesn't already exist.
+#
+# Run this on whichever machine has VS Code + Continue installed — that is
+# not necessarily the machine hosting vLLM. On the vLLM host itself, no
+# argument is needed (defaults to localhost:8000). From any other
+# workstation on the network, pass that host's BIND_HOST:PORT:
+#
+# Usage:
+#   bash setup-continue.sh                    # vLLM running on this machine
+#   bash setup-continue.sh 192.168.1.50:8000  # vLLM running on another host
 # =============================================================================
 set -euo pipefail
 
@@ -27,8 +36,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 ENV_FILE="${REPO_ROOT}/deploy/.env"
 
-VLLM_API_BASE="http://localhost:8000/v1"
-MODEL_TITLE="Qwen2.5-Coder-32B (Local vLLM)"
+# Optional first argument: host[:port] of the machine running vLLM.
+# Defaults to localhost:8000 for the common case of running this script
+# directly on the vLLM host.
+VLLM_HOST="${1:-localhost:8000}"
+VLLM_API_BASE="http://${VLLM_HOST}/v1"
+MODEL_TITLE="Qwen2.5-Coder-32B (vLLM @ ${VLLM_HOST})"
 
 # ---------------------------------------------------------------------------
 # Model ID resolution strategy (in priority order):
@@ -79,11 +92,11 @@ fi
 step "STEP 1/4 — Dependency Check"
 
 if ! command -v python3 &>/dev/null; then
-  fail "python3 not found. Run scripts/install-prereqs.sh first."
+  fail "python3 not found. Install it manually (e.g. apt install python3) or run scripts/prereqs/install-prereqs.sh if this is the vLLM host."
 fi
 
 if ! command -v jq &>/dev/null; then
-  fail "jq not found. Run scripts/install-prereqs.sh first."
+  fail "jq not found. Install it manually (e.g. apt install jq) or run scripts/prereqs/install-prereqs.sh if this is the vLLM host."
 fi
 
 ok "python3 and jq are available."

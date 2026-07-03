@@ -7,10 +7,12 @@
 # user configuration with GPU-detected tuning.
 #
 # Usage:
-#   bash scripts/deploy.sh
+#   sudo bash scripts/deploy/deploy.sh
+#   (root is required — install-prereqs.sh, and enabling the Docker service
+#   to survive a reboot, both need it)
 #
 # Prerequisites:
-#   cp deploy/env-template deploy/.env
+#   cp deploy/.env.example deploy/.env
 #   $EDITOR deploy/.env          # set BIND_HOST, HF_CACHE_DIR at minimum
 #
 # What this does, in order:
@@ -19,12 +21,15 @@
 #   3. Run install-prereqs.sh   — idempotent; skips already-satisfied steps
 #   4. Run validate-system.sh   — GPU + Docker connectivity; blocks on failure
 #   5. Run check-bottlenecks.sh — advisory performance scan; never blocks
-#   6. Run tune-inference.sh    — writes GPU-tuned vars to deploy/.env
+#   6. Run tune-inference.sh    — updates only the GPU-tuned keys in deploy/.env
 #   7. Re-apply user vars on top of tuned .env (user settings always win)
 #   8. Generate docker-compose.override.yml with fully-resolved vLLM command
 #      (optional features like speculative decoding wired in only if set)
-#   9. Launch via docker compose up -d
-#  10. Monitor startup: VRAM telemetry + log tailing until ready or OOM
+#   9. Ensure the Docker service is enabled at boot, so the container (which
+#      has restart: unless-stopped) comes back up automatically after a
+#      host reboot — not just after a plain container/daemon restart
+#  10. Launch via docker compose up -d
+#  11. Monitor startup: VRAM telemetry + log tailing until ready or OOM
 # =============================================================================
 set -euo pipefail
 
@@ -36,6 +41,18 @@ ok()    { echo -e "${GREEN}=== [✓]  $* ===${RESET}"; }
 warn()  { echo -e "${YELLOW}=== [⚠]  $* ===${RESET}"; }
 fail()  { echo -e "${RED}=== [✗]  $* ===${RESET}"; exit 1; }
 step()  { echo -e "\n${BOLD}──────────────────────────────────────────${RESET}"; echo -e "${BOLD}  $*${RESET}"; echo -e "${BOLD}──────────────────────────────────────────${RESET}"; }
+
+# Replace a key's value in deploy/.env in-place if the line exists, else
+# append it. Used instead of blind appends so re-running deploy.sh never
+# accumulates duplicate/stale key blocks in an existing .env.
+set_env_var() {
+  local key="$1" value="$2"
+  if grep -qE "^${key}=" "${ENV_FILE}"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${ENV_FILE}"
+  else
+    echo "${key}=${value}" >> "${ENV_FILE}"
+  fi
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -49,10 +66,17 @@ SCRIPT_PREREQS="${REPO_ROOT}/scripts/prereqs"
 SCRIPT_DEPLOY="${REPO_ROOT}/scripts/deploy"
 SCRIPT_TUNING="${REPO_ROOT}/scripts/tuning"
 
+# --- Privilege guard ---------------------------------------------------------
+# Required end-to-end: install-prereqs.sh installs system packages, and
+# enabling the Docker service to survive a reboot (below) needs systemctl.
+if [[ $EUID -ne 0 ]]; then
+  fail "This script must be run as root: sudo bash scripts/deploy/deploy.sh"
+fi
+
 # =============================================================================
 # STEP 1 — Load deploy/.env
 # =============================================================================
-step "STEP 1/6 — Loading Configuration"
+step "STEP 1/7 — Loading Configuration"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo -e ""
@@ -97,7 +121,7 @@ info "HF cache      : ${U_HF_CACHE}"
 # =============================================================================
 # STEP 2 — Resolve BIND_HOST
 # =============================================================================
-step "STEP 2/6 — Resolving Network Bind Address"
+step "STEP 2/7 — Resolving Network Bind Address"
 
 if [[ -z "${U_BIND_HOST}" ]]; then
   warn "BIND_HOST not set in deploy/.env — auto-detecting primary external IP..."
@@ -129,7 +153,7 @@ info "API will be reachable at: http://${U_BIND_HOST}:${U_PORT}/v1"
 # =============================================================================
 # STEP 3 — Prerequisites, system validation, and performance advisory
 # =============================================================================
-step "STEP 3/6 — System Checks"
+step "STEP 3/7 — System Checks"
 
 info "Running install-prereqs.sh (idempotent — skips already-satisfied steps)..."
 bash "${SCRIPT_PREREQS}/install-prereqs.sh"
@@ -143,7 +167,7 @@ bash "${SCRIPT_TUNING}/check-bottlenecks.sh" || true
 # =============================================================================
 # STEP 4 — GPU-tuned configuration
 # =============================================================================
-step "STEP 4/6 — Generating Tuned GPU Configuration"
+step "STEP 4/7 — Generating Tuned GPU Configuration"
 
 info "Running tune-inference.sh (detects GPU topology, writes deploy/.env)..."
 # Export user's model so tune-inference.sh respects it instead of using its default
@@ -153,16 +177,14 @@ bash "${SCRIPT_TUNING}/tune-inference.sh"
 
 # Re-apply user settings on top of what tune-inference.sh wrote.
 # tune-inference.sh owns GPU vars; we own network + model identity.
-{
-  echo ""
-  echo "# --- Re-applied by deploy.sh (user settings take precedence) ---"
-  echo "BIND_HOST=${U_BIND_HOST}"
-  echo "MODEL=${U_MODEL}"
-  echo "SERVED_MODEL_NAME=${U_SERVED_NAME}"
-  echo "PORT=${U_PORT}"
-  echo "HF_CACHE_DIR=${U_HF_CACHE}"
-  [[ -n "${U_HF_TOKEN}" ]] && echo "HF_TOKEN=${U_HF_TOKEN}"
-} >> "${ENV_FILE}"
+# Updated in-place (not appended) so re-running deploy.sh never piles up
+# duplicate key blocks in an existing deploy/.env.
+set_env_var BIND_HOST         "${U_BIND_HOST}"
+set_env_var MODEL             "${U_MODEL}"
+set_env_var SERVED_MODEL_NAME "${U_SERVED_NAME}"
+set_env_var PORT              "${U_PORT}"
+set_env_var HF_CACHE_DIR      "${U_HF_CACHE}"
+[[ -n "${U_HF_TOKEN}" ]] && set_env_var HF_TOKEN "${U_HF_TOKEN}"
 
 ok "Configuration finalised. GPU-tuned values + user settings merged."
 
@@ -184,7 +206,7 @@ info "Max context length      : ${FINAL_CTX} tokens"
 # =============================================================================
 # STEP 5 — Generate docker-compose.override.yml
 # =============================================================================
-step "STEP 5/6 — Building Compose Override"
+step "STEP 5/7 — Building Compose Override"
 
 # The override is regenerated on every deploy run so optional features stay
 # in sync with whatever is in deploy/.env at deploy time.
@@ -247,9 +269,28 @@ ok "docker-compose.override.yml written."
 info "Port binding  : ${U_BIND_HOST}:${U_PORT} → container:8000"
 
 # =============================================================================
-# STEP 6 — Launch and monitor
+# STEP 6 — Ensure boot persistence (Ubuntu / systemd)
 # =============================================================================
-step "STEP 6/6 — Launching vLLM Server"
+step "STEP 6/7 — Ensuring Boot Persistence"
+
+# docker-compose.yml sets `restart: unless-stopped` on the vllm service, so
+# once the Docker daemon comes up, Docker restarts the container for us.
+# The one thing that has to be true for that to also cover a full host
+# reboot is that the Docker service itself is enabled to start at boot —
+# install-prereqs.sh only enables it when installing Docker for the first
+# time, so an already-installed Docker daemon may still be boot-disabled.
+if systemctl is-enabled --quiet docker 2>/dev/null; then
+  ok "docker.service is enabled at boot — the vLLM container will restart automatically after a reboot."
+else
+  warn "docker.service is not enabled at boot. Enabling it now..."
+  systemctl enable docker
+  ok "docker.service enabled — the vLLM container will now restart automatically after a reboot."
+fi
+
+# =============================================================================
+# STEP 7 — Launch and monitor
+# =============================================================================
+step "STEP 7/7 — Launching vLLM Server"
 
 CONTAINER_NAME="vllm-coder-server"
 
@@ -312,9 +353,9 @@ while [[ "${ELAPSED}" -lt "${STARTUP_TIMEOUT}" ]]; do
     printf  "${GREEN}${BOLD}║  Model alias   : %-46s║${RESET}\n" "${U_SERVED_NAME}"
     echo -e "${GREEN}${BOLD}║                                                                ║${RESET}"
     echo -e "${GREEN}${BOLD}║  Next steps:                                                   ║${RESET}"
-    echo -e "${GREEN}${BOLD}║    bash scripts/setup-continue.sh  — configure VS Code         ║${RESET}"
-    echo -e "${GREEN}${BOLD}║    bash scripts/benchmark.sh       — verify throughput          ║${RESET}"
-    echo -e "${GREEN}${BOLD}║    bash scripts/stop.sh            — graceful shutdown          ║${RESET}"
+    echo -e "${GREEN}${BOLD}║    bash scripts/deploy/setup-continue.sh — configure VS Code   ║${RESET}"
+    echo -e "${GREEN}${BOLD}║    bash scripts/tuning/benchmark.sh      — verify throughput   ║${RESET}"
+    echo -e "${GREEN}${BOLD}║    bash scripts/deploy/stop.sh           — graceful shutdown   ║${RESET}"
     echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════════╝${RESET}"
     exit 0
   fi
@@ -330,5 +371,5 @@ warn "Server did not signal readiness within ${STARTUP_TIMEOUT}s."
 warn "The model may still be loading — 32B models can take 5+ min from cold storage."
 echo ""
 info "Watch logs : docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.override.yml logs -f"
-info "Check VRAM : bash scripts/validate-vram.sh"
+info "Check VRAM : bash scripts/deploy/validate-vram.sh"
 exit 1
