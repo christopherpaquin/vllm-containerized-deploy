@@ -230,9 +230,11 @@ if [[ ${#WARNINGS[@]} -gt 0 ]]; then
     echo -e "${YELLOW}  ⚠  ${w}${RESET}"
   done
   echo -e "\n${CYAN}  Review warnings above, then run: bash scripts/tune-inference.sh${RESET}"
+  exit 2
 else
   echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
   echo -e "${GREEN}${BOLD}║    All checks passed. System is ready.                      ║${RESET}"
   echo -e "${GREEN}${BOLD}║    Next step: bash scripts/tuning/tune-inference.sh                ║${RESET}"
   echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
+  exit 0
 fi

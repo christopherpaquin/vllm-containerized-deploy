@@ -370,10 +370,53 @@ info "Running install-prereqs.sh (idempotent — skips already-satisfied steps).
 bash "${SCRIPT_PREREQS}/install-prereqs.sh"
 
 info "Running validate-system.sh (GPU + Docker connectivity)..."
+set +e
 bash "${SCRIPT_DEPLOY}/validate-system.sh"
+VALIDATION_STATUS=$?
+set -e
 
-info "Running check-bottlenecks.sh (performance advisory — non-blocking)..."
-bash "${SCRIPT_TUNING}/check-bottlenecks.sh" || true
+if [[ ${VALIDATION_STATUS} -eq 2 ]]; then
+  echo ""
+  warn "Validation completed with warnings."
+  read -rp "Validation warnings detected. Do you want to [c] Continue or [e] Exit deployment? [c/e]: " CHOICE
+  if [[ ! "${CHOICE}" =~ ^[cC]$ ]]; then
+    fail "Deployment aborted by user."
+  fi
+elif [[ ${VALIDATION_STATUS} -ne 0 ]]; then
+  fail "Pre-flight validation failed (critical errors). Please address the errors above."
+fi
+
+info "Running check-bottlenecks.sh (performance advisory)..."
+set +e
+bash "${SCRIPT_TUNING}/check-bottlenecks.sh"
+BOTTLENECK_STATUS=$?
+set -e
+
+if [[ ${BOTTLENECK_STATUS} -eq 2 ]]; then
+  echo ""
+  warn "Performance tuning recommendations found."
+  read -rp "Tuning bottlenecks detected. Do you want to [c] Continue, [i] Implement tunables, or [e] Exit deployment? [c/i/e]: " CHOICE
+  if [[ "${CHOICE}" =~ ^[iI]$ ]]; then
+    info "Applying performance tunables..."
+    # 1. Switch CPU governor to performance
+    if [[ -e "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor" ]]; then
+      echo "performance" | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null || true
+    fi
+    # 2. Enable GPU persistence mode
+    if command -v nvidia-smi &>/dev/null; then
+      nvidia-smi -pm 1 >/dev/null || true
+    fi
+    # 3. Enable Transparent Huge Pages
+    if [[ -w "/sys/kernel/mm/transparent_hugepage/enabled" ]]; then
+      echo "always" | tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null || true
+    fi
+    ok "Performance tunables applied successfully."
+  elif [[ "${CHOICE}" =~ ^[eE]$ ]] || [[ ! "${CHOICE}" =~ ^[cC]$ ]]; then
+    fail "Deployment aborted by user."
+  fi
+elif [[ ${BOTTLENECK_STATUS} -ne 0 ]]; then
+  fail "Performance advisory script failed with critical errors."
+fi
 
 # =============================================================================
 # STEP 5 — GPU-tuned configuration
