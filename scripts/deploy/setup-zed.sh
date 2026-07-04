@@ -177,8 +177,9 @@ if "openai" not in config["language_models"]:
 
 # Configure the local OpenAI provider details
 openai_provider = config["language_models"]["openai"]
-openai_provider["api_base"] = api_base
-openai_provider["api_key"] = "dummy"  # pragma: allowlist secret
+openai_provider.pop("api_base", None)
+openai_provider.pop("api_key", None)
+openai_provider["api_url"] = api_base
 
 # Update/insert the available models list
 available_models = openai_provider.get("available_models", [])
