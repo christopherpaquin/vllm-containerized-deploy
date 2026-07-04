@@ -2496,3 +2496,19 @@ Roadmap carried forward: `lib/common.sh`, `setup-continue.sh` JSON crash, `insta
      ```bash
      cline --api-provider openai-compatible --api-url http://10.1.10.17:8000/v1 --model qwen2.5-coder-14b-awq "your task prompt here"
      ```
+
+---
+
+## 2026-07-04 — Development Agent (Antigravity) — Cline CLI Setup Script & Tool-Calling Fix
+
+### Changes & Reasoning:
+1. **Added Cline CLI Setup Script (`setup-cline-cli.sh`)**:
+   - *Target File*: [scripts/deploy/setup-cline-cli.sh](file:///home/cpaquin/Workspace/Git/vllm-containerized-deploy/scripts/deploy/setup-cline-cli.sh)
+   - *Change*: Implemented a configuration automation utility that reads your vLLM `.env` values, backs up `~/.cline/data/settings/providers.json`, and writes correct `openai` and `openai-compatible` configuration parameters to set the default CLI target model to `qwen2.5-coder-14b-awq` on `10.1.10.17:8000`.
+   - *Reasoning*: Allows one-click configuration of the newly installed Cline CLI.
+2. **Added Global Cline Rules File (`.clinerules`)**:
+   - *Target File*: [.clinerules](file:///home/cpaquin/Workspace/Git/vllm-containerized-deploy/.clinerules)
+   - *Change*: Added a rules file to the repository root that instructs the local model to strictly invoke tools using the XML tag format (e.g., `<execute_command><command>...</command></execute_command>`) rather than standard OpenAI JSON schema blocks.
+   - *Reasoning*: Prevents parsing failures in the Cline CLI. When Cline is configured with an OpenAI-compatible provider, it passes tool definitions via the API's `tools` parameter, prompting the model to output a JSON object. However, Cline's internal parser expects XML tags, leading it to output the tool call as raw text instead of executing it. The `.clinerules` instructs the model to override the JSON schema and output XML, which Cline parses correctly.
+3. **Executed Configuration**:
+   - *Status*: Complete. Sourced and executed `bash scripts/deploy/setup-cline-cli.sh 10.1.10.17:8000` to configure the local Cline CLI.
