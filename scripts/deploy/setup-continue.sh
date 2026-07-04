@@ -237,6 +237,8 @@ models:
       - edit
       - apply
       - autocomplete
+    defaultCompletionOptions:
+      maxTokens: 1024
 YAMLEOF
 
   ok "Default config.yaml written to ${CONFIG_FILE}."
@@ -283,7 +285,10 @@ new_model = {
     "model": model_id,
     "apiBase": api_base,
     "apiKey": "dummy",
-    "roles": ["chat", "edit", "apply", "autocomplete"]
+    "roles": ["chat", "edit", "apply", "autocomplete"],
+    "defaultCompletionOptions": {
+        "maxTokens": 1024
+    }
 }
 
 # Filter out old local vLLM entries to avoid duplicates
@@ -304,9 +309,9 @@ for m in config["models"]:
         elif "vLLM" in m.get("name", ""):
             is_vllm = True
 
-    if is_vllm:
-        if m.get("apiBase") == api_base and m.get("model") == model_id:
+        if m.get("apiBase") == api_base and m.get("model") == model_id and "defaultCompletionOptions" in m:
             already_configured = True
+            cleaned_models.append(m)
     else:
         # Keep non-vLLM models (e.g. Claude)
         cleaned_models.append(m)
