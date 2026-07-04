@@ -233,6 +233,11 @@ try:
 except ValueError:
     max_tokens = 32768
 
+# VS Code Copilot Chat's prompt-tsx renderer crashes client-side if maxInputTokens is too low
+# due to the injected tool schemas. Force a minimum of 32768 tokens for the client-side config.
+if max_tokens < 32768:
+    max_tokens = 32768
+
 # Load existing config
 config = []
 if os.path.exists(config_path):
