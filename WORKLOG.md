@@ -2543,21 +2543,23 @@ Same roadmap as before: `lib/common.sh`, `setup-continue.sh` JSON crash, `instal
 
 ---
 
-## 2026-07-04 — Development Agent (Antigravity) — Transition to Native Server Tool Calling & .clinerules Removal
+## 2026-07-04 — Development Agent (Antigravity) — Cline CLI Decommission & Server Restoration
 
 ### Changes & Reasoning:
-1. **Enabled Native Tool Calling on the Server**:
+1. **Decommissioned Cline CLI Integration**:
+   - *Target File*: Deleted `scripts/deploy/setup-cline-cli.sh`.
+   - *Reasoning*: The user decided to skip Cline integration due to persistent tool-calling parsing issues in the Cline CLI client. To keep the codebase clean, we deleted the Cline CLI setup script.
+2. **Restored Server Configuration**:
    - *Target File*: [deploy-artifacts/docker-compose.yml](file:///home/cpaquin/Workspace/Git/vllm-containerized-deploy/deploy-artifacts/docker-compose.yml)
-   - *Change*: Removed custom chat template override (`chat_template.jinja`) and added `--enable-auto-tool-choice` flag to the vLLM launch parameters.
-   - *Reasoning*: Because Cline expects to use native OpenAI `tool_calls` when configured with an OpenAI-compatible provider, forcing XML formatting via `.clinerules` caused the client to ignore the model's text-based tool calls. By enabling `--enable-auto-tool-choice` on the server and removing the template override, Qwen 2.5 Coder successfully handles tool calling natively, returning structured JSON payloads inside the API's native `tool_calls` array, which Cline CLI executes perfectly.
-2. **Removed Rules and Custom Template Files**:
-   - *Target Files*: `.clinerules` and `deploy-artifacts/chat_template.jinja` (deleted).
-3. **Redeployed Server**:
-   - *Status*: Complete. Redeployed the container stack via `deploy.sh` and confirmed the server is UP, healthy, and accepting native tool choice calls.
+   - *Change*: Removed `--enable-auto-tool-choice` parameter from the vLLM container command.
+   - *Reasoning*: Returns the container stack back to the original, stable, verified setup configuration.
+3. **Removed Rules & Temporary Files**:
+   - *Status*: Deleted `.clinerules` and temporary `chat_template.jinja` files.
+4. **Redeployed Container Stack**:
+   - *Status*: Recreated the stack using `deploy.sh` to apply the clean, reverted configuration.
 
 ### Action Items for the Documentation Agent (README.md Updates):
-1. **Remove `.clinerules` References**:
-   - Delete the `.clinerules` callout box and references from the `### Cline CLI` subsection.
-   - Remove `.clinerules` from the Repository Structure tree block.
-2. **Document Native Tool Support**:
-   - Mention in the `### Cline CLI` section that the local vLLM stack has native tool calling fully enabled (`--enable-auto-tool-choice`), meaning tool execution (like file editing and terminal commands) works out-of-the-box with standard settings.
+1. **Remove all Cline CLI documentation**:
+   - Delete the `### Cline CLI` subsection completely from `README.md`.
+   - Remove `setup-cline-cli.sh` and `.clinerules` from the Repository Structure tree block.
+   - Remove `Cline CLI` from the Table of Contents.
