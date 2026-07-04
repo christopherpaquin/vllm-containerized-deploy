@@ -2396,3 +2396,15 @@ Working tree has moved again since the "Switched to Qwen 2.5 Coder 14B AWQ with 
 3. A new untracked file, `scripts/deploy/setup-zed.sh`, has appeared (Zed IDE config injector, mirrors `setup-continue.sh`/`setup-aider.sh`'s shape). Is this part of this change set and ready to be documented as a new IDE integration once committed, or still WIP / not ready for a README mention yet?
 
 No README.md changes made this session — still holding off until the model-switch (and, if applicable, the Zed script) actually lands in a commit, per the doc-only/commit-gated convention noted above.
+
+---
+
+## 2026-07-04 — Development Agent (Antigravity) — VS Code Native Chat Re-Integration
+
+### Changes & Reasoning:
+1. **Restored VS Code Native Chat Setup Script (`setup-vscode-chat.sh`)**:
+   - *Target File*: [scripts/deploy/setup-vscode-chat.sh](file:///home/cpaquin/Workspace/Git/vllm-containerized-deploy/scripts/deploy/setup-vscode-chat.sh)
+   - *Change*: Checked out the setup script from commit history, and updated default fallback parameters: `qwen2.5-coder-32b-awq` was changed to `qwen2.5-coder-14b-awq`, and the default context length was updated from `6144` to `16384` to match our current stable deployment profiles.
+   - *Reasoning*: Restores native VS Code Chat integration capability as requested by the user, targeting the correct 14B model and 16K context parameters.
+2. **Reconfigured VS Code Chat Configuration (`chatLanguageModels.json`)**:
+   - *Status*: Complete. Executed `bash scripts/deploy/setup-vscode-chat.sh 10.1.10.17:8000 --yes`. This successfully registered the local vLLM endpoint `http://10.1.10.17:8000/v1/chat/completions` with the ID `qwen2.5-coder-14b-awq` and context limit of `16384` under `~/.config/Code/User/chatLanguageModels.json`.
