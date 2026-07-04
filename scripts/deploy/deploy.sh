@@ -146,6 +146,8 @@ U_SPEC_TOKENS="${NUM_SPECULATIVE_TOKENS:-5}"
 U_DTYPE="${DTYPE:-}"
 U_ENFORCE_EAGER="${ENFORCE_EAGER:-}"
 U_MAX_NUM_SEQS="${MAX_NUM_SEQS:-}"
+U_ENABLE_AUTO_TOOL_CHOICE="${ENABLE_AUTO_TOOL_CHOICE:-}"
+U_TOOL_CALL_PARSER="${TOOL_CALL_PARSER:-}"
 
 # Optional Open WebUI vars
 U_ENABLE_OPEN_WEBUI="${ENABLE_OPEN_WEBUI:-false}"
@@ -481,6 +483,8 @@ set_env_var OPEN_WEBUI_OPENAI_API_BASE_URL "${U_OPEN_WEBUI_API_BASE}"
 set_env_var OPEN_WEBUI_OPENAI_API_KEY  "${U_OPEN_WEBUI_API_KEY}"
 set_env_var OPEN_WEBUI_RESTART_POLICY  "${U_OPEN_WEBUI_RESTART_POLICY}"
 set_env_var VLLM_RESTART_POLICY        "${U_VLLM_RESTART_POLICY}"
+[[ -n "${U_ENABLE_AUTO_TOOL_CHOICE}" ]] && set_env_var ENABLE_AUTO_TOOL_CHOICE "${U_ENABLE_AUTO_TOOL_CHOICE}"
+[[ -n "${U_TOOL_CALL_PARSER}" ]] && set_env_var TOOL_CALL_PARSER "${U_TOOL_CALL_PARSER}"
 [[ -n "${U_LAN_CIDR}" ]] && set_env_var LAN_CIDR "${U_LAN_CIDR}"
 
 ok "Configuration finalised. GPU-tuned values + user settings merged."
@@ -534,6 +538,18 @@ if [[ -n "${U_MAX_NUM_SEQS}" ]]; then
   OPT_ARGS="${OPT_ARGS}      --max-num-seqs            ${U_MAX_NUM_SEQS}
 "
   info "Max concurrent seqs  : ${U_MAX_NUM_SEQS}"
+fi
+
+if [[ "${U_ENABLE_AUTO_TOOL_CHOICE}" == "true" ]]; then
+  OPT_ARGS="${OPT_ARGS}      --enable-auto-tool-choice
+"
+  info "Auto tool choice     : ENABLED"
+fi
+
+if [[ -n "${U_TOOL_CALL_PARSER}" ]]; then
+  OPT_ARGS="${OPT_ARGS}      --tool-call-parser        ${U_TOOL_CALL_PARSER}
+"
+  info "Tool call parser     : ${U_TOOL_CALL_PARSER}"
 fi
 
 # Write override — all values are literal (already resolved), no compose substitution
@@ -702,7 +718,7 @@ while [[ "${ELAPSED}" -lt "${STARTUP_TIMEOUT}" ]]; do
 
   LOGS=$(docker logs "${CONTAINER_NAME}" 2>&1 | tail -8)
 
-  if echo "${LOGS}" | grep -q "Uvicorn running on"; then
+  if echo "${LOGS}" | grep -qiE "Uvicorn running on|Application startup complete"; then
     echo ""
     ok "vLLM server is UP!"
     break
@@ -815,6 +831,6 @@ echo -e "${GREEN}${BOLD}║                                                     
 echo -e "${GREEN}${BOLD}║  Next steps:                                                   ║${RESET}"
 echo -e "${GREEN}${BOLD}║    bash scripts/deploy/setup-continue.sh — configure VS Code   ║${RESET}"
 echo -e "${GREEN}${BOLD}║    bash scripts/tuning/benchmark.sh      — verify throughput   ║${RESET}"
-echo -e "${GREEN}${BOLD}║    bash scripts/deploy/stop.sh           — graceful shutdown   ║${RESET}"
+echo -e "${GREEN}${BOLD}║    bash scripts/deploy/teardown.sh       — graceful teardown   ║${RESET}"
 echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════════╝${RESET}"
 exit 0

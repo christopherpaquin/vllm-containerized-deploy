@@ -109,7 +109,7 @@ for poll in $(seq 1 "${MAX_POLLS}"); do
   fi
 
   # Check for successful startup signal
-  if echo "${RECENT_LOGS}" | grep -q "Uvicorn running on"; then
+  if echo "${RECENT_LOGS}" | grep -qiE "Uvicorn running on|Application startup complete"; then
     echo ""
     ok "═══════════════════════════════════════════════════════════════"
     ok "  vLLM server is READY — Uvicorn is accepting connections."

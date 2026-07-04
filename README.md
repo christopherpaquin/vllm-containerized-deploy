@@ -81,11 +81,11 @@ vllm-containerized-deploy/
     │   ├── validate-vram.sh            # Live startup telemetry monitor
     │   ├── setup-continue.sh           # VS Code Continue extension hook
     │   ├── smoke-test.sh               # Smoke test verification for endpoints
-    │   └── stop.sh                     # Graceful server teardown wrapper
+    │   └── teardown.sh                 # Graceful server teardown wrapper (stops and deletes containers)
     └── tuning/
         ├── tune-inference.sh           # Hardware-sensing config generator
         ├── check-bottlenecks.sh        # Hardware & OS performance advisor (--json for machine-readable output)
-        ├── snapshot-diagnostics.sh     # Read-only GPU state + log capture (run before stop.sh when debugging)
+        ├── snapshot-diagnostics.sh     # Read-only GPU state + log capture (run before teardown.sh when debugging)
         ├── benchmark.sh                # Single-stream token throughput evaluator
         ├── load-test.sh                # Concurrent-request load tester (req/s, latency percentiles)
         └── compare-benchmarks.sh       # Regression detector across benchmark-results/ history
@@ -415,7 +415,7 @@ sudo systemctl isolate graphical.target
 ```bash
 # Stop the server
 docker compose -f deploy-artifacts/docker-compose.yml down
-# or: bash scripts/deploy/stop.sh   (same thing, plus a post-stop VRAM confirmation table)
+# or: bash scripts/deploy/teardown.sh   (same thing, plus a post-stop VRAM confirmation table)
 
 # Capture a diagnostic snapshot before stopping (GPU state + recent logs) —
 # useful when debugging a crash, OOM, or silent hang. Read-only, never
@@ -441,7 +441,7 @@ This repository includes optional support for [Open WebUI](https://github.com/op
 ### Key Features
 - **Browser Access**: Use the model from any device (phone, laptop, tablet) on your local network.
 - **Optional & Disabled by Default**: Kept disabled by default (`ENABLE_OPEN_WEBUI=false`) to preserve the core vLLM-only focus.
-- **Data Persistence**: Open WebUI's database, user accounts, and chat history are saved in a persistent Docker volume, preserving your data across container restarts, redeployments, and normal `stop.sh` operations.
+- **Data Persistence**: Open WebUI's database, user accounts, and chat history are saved in a persistent Docker volume, preserving your data across container restarts, redeployments, and normal `teardown.sh` operations.
 - **Auto-Boot**: Starts automatically at host reboot alongside vLLM when enabled.
 
 ### Configuration
@@ -503,14 +503,14 @@ The smoke test validates:
 
 To stop the services and release GPU VRAM:
 ```bash
-bash scripts/deploy/stop.sh
+bash scripts/deploy/teardown.sh
 ```
 This stops both vLLM and Open WebUI containers. **Your Open WebUI chat history, user accounts, and settings are preserved.**
 
 To perform a deep-clean and delete all Open WebUI data/volumes, pass the `--purge` flag:
 ```bash
 # WARNING: This deletes the Open WebUI database/volume permanently!
-bash scripts/deploy/stop.sh --purge
+bash scripts/deploy/teardown.sh --purge
 ```
 
 ### Troubleshooting

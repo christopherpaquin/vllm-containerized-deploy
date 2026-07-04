@@ -7,8 +7,8 @@
 # per-GPU VRAM/temperature/power and recent container logs into a timestamped
 # file under ~/.local/share/vllm-snapshots/, for post-mortem reference.
 #
-# Typical use: run this *before* scripts/stop.sh when debugging a crash, OOM,
-# or silent hang — stop.sh itself stays a thin, always-safe teardown with no
+# Typical use: run this *before* scripts/deploy/teardown.sh when debugging a crash, OOM,
+# or silent hang — teardown.sh itself stays a thin, always-safe teardown with no
 # embedded snapshot logic (see WORKLOG.md Q5 discussion), so this is the tool
 # for "capture evidence, then shut down."
 #

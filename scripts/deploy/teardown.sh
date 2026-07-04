@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# stop.sh
-# Graceful teardown wrapper for the vLLM inference server.
-# Brings down the docker compose stack cleanly, giving NCCL time to flush
-# inter-GPU state before SIGKILL.
+# teardown.sh
+# Graceful teardown wrapper for the vLLM inference server stack.
+# Stops and removes (deletes) the docker compose containers, networks, and
+# temporary overrides, giving NCCL time to flush inter-GPU state.
 #
 # Per architecture discussion in WORKLOG.md (Q5): this script stays thin —
 # no embedded VRAM/log snapshot. If you need a pre-stop post-mortem snapshot,

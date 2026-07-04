@@ -154,7 +154,7 @@ step "STEP 3/5 — GPU Persistence Mode"
 
 info "When persistence mode is off, the NVIDIA driver unloads its GPU state"
 info "between clients, adding driver re-init latency to every fresh container"
-info "start/restart — noticeable on validate-vram.sh startup and stop.sh/restart cycles."
+info "start/restart — noticeable on validate-vram.sh startup and teardown.sh/restart cycles."
 echo ""
 
 printf "  %-6s %-35s %s\n" "GPU" "Name" "Persistence Mode"

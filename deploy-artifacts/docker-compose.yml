@@ -7,7 +7,7 @@
 #
 # Recommended: use the deployment orchestrator instead:
 #   bash scripts/deploy/deploy.sh
-#   bash scripts/deploy/stop.sh
+#   bash scripts/deploy/teardown.sh
 # =============================================================================
 
 services:
