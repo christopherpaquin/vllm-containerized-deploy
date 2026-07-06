@@ -138,7 +138,12 @@ U_MODEL="${MODEL:-Qwen/Qwen2.5-Coder-32B-Instruct-AWQ}"
 U_SERVED_NAME="${SERVED_MODEL_NAME:-qwen2.5-coder-32b-awq}"
 U_BIND_HOST="${BIND_HOST:-}"
 U_PORT="${PORT:-8000}"
-U_HF_CACHE="${HF_CACHE_DIR:-${HOME}/.cache/huggingface}"
+# When running under sudo, $HOME is /root — use the real user's home as fallback.
+_REAL_HOME="${HOME}"
+if [[ -n "${SUDO_USER:-}" ]]; then
+  _REAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
+fi
+U_HF_CACHE="${HF_CACHE_DIR:-${_REAL_HOME}/.cache/huggingface}"
 U_HF_TOKEN="${HF_TOKEN:-}"
 # Optional feature vars (empty = disabled)
 U_SPEC_MODEL="${SPECULATIVE_MODEL:-}"
@@ -186,6 +191,29 @@ info "Served as     : ${U_SERVED_NAME}"
 info "Port          : ${U_PORT}"
 info "HF cache      : ${U_HF_CACHE}"
 info "Open WebUI    : ${U_ENABLE_OPEN_WEBUI} (Port: ${U_OPEN_WEBUI_PORT})"
+
+# --- Ensure HF cache directory exists with correct ownership -----------------
+if [[ ! -d "${U_HF_CACHE}" ]]; then
+  info "Creating HF cache directory: ${U_HF_CACHE}"
+  mkdir -p "${U_HF_CACHE}"
+fi
+
+# When running under sudo, the directory may be owned by root. Fix ownership
+# so the invoking user (and Docker bind mounts) can read/write the cache.
+if [[ -n "${SUDO_USER:-}" ]]; then
+  DESIRED_OWNER="${SUDO_USER}:$(id -gn "${SUDO_USER}")"
+  CURRENT_OWNER="$(stat -c '%U:%G' "${U_HF_CACHE}")"
+  if [[ "${CURRENT_OWNER}" != "${DESIRED_OWNER}" ]]; then
+    info "Fixing HF cache ownership: ${CURRENT_OWNER} → ${DESIRED_OWNER}"
+    chown "${DESIRED_OWNER}" "${U_HF_CACHE}"
+  fi
+fi
+
+if [[ -d "${U_HF_CACHE}" && -w "${U_HF_CACHE}" ]]; then
+  ok "HF cache directory ready: ${U_HF_CACHE}"
+else
+  fail "HF cache directory ${U_HF_CACHE} is not writable."
+fi
 
 # =============================================================================
 # STEP 2 — Resolve BIND_HOST

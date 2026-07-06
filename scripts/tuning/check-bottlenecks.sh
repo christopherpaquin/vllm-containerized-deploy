@@ -69,9 +69,9 @@ per_lane_gbs() {
 # Gen3 x8 (or equivalently Gen4 x4) floor, in GB/s.
 MIN_BANDWIDTH_GBS="7.88"
 
-printf "  %-6s %-35s %-10s %-10s %-14s %s\n" \
-  "GPU" "Name" "Gen.Cur" "Width.Cur" "Bandwidth" "Status"
-printf "  %s\n" "$(printf '─%.0s' {1..100})"
+printf "  %-6s %-35s %-10s %-10s %-14s %-14s %s\n" \
+  "GPU" "Name" "Gen.Max" "Width.Max" "Max BW" "Cur BW" "Status"
+printf "  %s\n" "$(printf '─%.0s' {1..110})"
 
 PCIE_DEGRADED=false
 
@@ -79,25 +79,36 @@ for i in $(seq 0 $((GPU_COUNT - 1))); do
   NAME=$(nvidia-smi -i "$i" --query-gpu=name --format=csv,noheader | xargs)
   GEN_CUR=$(nvidia-smi -i "$i" --query-gpu=pcie.link.gen.current --format=csv,noheader | xargs)
   WIDTH_CUR=$(nvidia-smi -i "$i" --query-gpu=pcie.link.width.current --format=csv,noheader | xargs)
+  GEN_MAX=$(nvidia-smi -i "$i" --query-gpu=pcie.link.gen.max --format=csv,noheader | xargs)
+  WIDTH_MAX=$(nvidia-smi -i "$i" --query-gpu=pcie.link.width.max --format=csv,noheader | xargs)
 
-  LANE_BW=$(per_lane_gbs "${GEN_CUR}")
-  EFFECTIVE_BW=$(echo "scale=2; ${LANE_BW} * ${WIDTH_CUR}" | bc)
+  # Use max (negotiated capability) for the bandwidth floor check, not idle current.
+  LANE_BW_MAX=$(per_lane_gbs "${GEN_MAX}")
+  MAX_BW=$(echo "scale=2; ${LANE_BW_MAX} * ${WIDTH_MAX}" | bc)
 
-  BELOW_FLOOR=$(echo "${EFFECTIVE_BW} < ${MIN_BANDWIDTH_GBS}" | bc)
+  LANE_BW_CUR=$(per_lane_gbs "${GEN_CUR}")
+  CUR_BW=$(echo "scale=2; ${LANE_BW_CUR} * ${WIDTH_CUR}" | bc)
+
+  BELOW_FLOOR=$(echo "${MAX_BW} < ${MIN_BANDWIDTH_GBS}" | bc)
 
   if [[ "${BELOW_FLOOR}" -eq 1 ]]; then
     COLOR="${YELLOW}"; ICON="⚠"; STATUS="Below Gen3x8/Gen4x4 floor"
     PCIE_DEGRADED=true
-    WARNINGS+=("GPU ${i} (${NAME}): PCIe link Gen${GEN_CUR} x${WIDTH_CUR} (~${EFFECTIVE_BW} GB/s) is below the Gen3x8/Gen4x4 floor (~${MIN_BANDWIDTH_GBS} GB/s). NCCL all-reduce will bottleneck tensor-parallel steps.")
+    WARNINGS+=("GPU ${i} (${NAME}): PCIe max link Gen${GEN_MAX} x${WIDTH_MAX} (~${MAX_BW} GB/s) is below the Gen3x8/Gen4x4 floor (~${MIN_BANDWIDTH_GBS} GB/s). NCCL all-reduce will bottleneck tensor-parallel steps.")
     RECOMMENDATIONS+=("GPU ${i}: reseat the card, check BIOS PCIe bifurcation/Gen lock settings, or move it to a full x16/x8 electrical slot.")
   else
-    COLOR="${GREEN}"; ICON="✓"; STATUS="OK"
+    COLOR="${GREEN}"; ICON="✓"
+    if [[ "${GEN_CUR}" -lt "${GEN_MAX}" || "${WIDTH_CUR}" -lt "${WIDTH_MAX}" ]]; then
+      STATUS="OK (idle: Gen${GEN_CUR} x${WIDTH_CUR})"
+    else
+      STATUS="OK"
+    fi
   fi
 
-  printf "  ${COLOR}%-6s %-35s Gen%-7s x%-9s %-14s %s${RESET}\n" \
-    "${ICON} ${i}" "${NAME:0:35}" "${GEN_CUR}" "${WIDTH_CUR}" "${EFFECTIVE_BW} GB/s" "${STATUS}"
+  printf "  ${COLOR}%-6s %-35s Gen%-7s x%-9s %-14s %-14s %s${RESET}\n" \
+    "${ICON} ${i}" "${NAME:0:35}" "${GEN_MAX}" "${WIDTH_MAX}" "${MAX_BW} GB/s" "${CUR_BW} GB/s" "${STATUS}"
 
-  PCIE_RECORDS+=("${i}"$'\x1f'"${NAME}"$'\x1f'"${GEN_CUR}"$'\x1f'"${WIDTH_CUR}"$'\x1f'"${EFFECTIVE_BW}"$'\x1f'"${BELOW_FLOOR}")
+  PCIE_RECORDS+=("${i}"$'\x1f'"${NAME}"$'\x1f'"${GEN_MAX}"$'\x1f'"${WIDTH_MAX}"$'\x1f'"${MAX_BW}"$'\x1f'"${BELOW_FLOOR}"$'\x1f'"${GEN_CUR}"$'\x1f'"${WIDTH_CUR}"$'\x1f'"${CUR_BW}")
 done
 echo ""
 
@@ -418,13 +429,16 @@ def parse_records(raw, fields):
 def parse_list(raw):
     return [line for line in raw.split("\n") if line]
 
-pcie = parse_records(os.environ["PCIE_LINES"], ["gpu", "name", "gen_current", "width_current", "effective_bandwidth_gbs", "below_floor"])
+pcie = parse_records(os.environ["PCIE_LINES"], ["gpu", "name", "gen_max", "width_max", "max_bandwidth_gbs", "below_floor", "gen_current", "width_current", "current_bandwidth_gbs"])
 for r in pcie:
     r["gpu"] = int(r["gpu"])
+    r["gen_max"] = int(r["gen_max"])
+    r["width_max"] = int(r["width_max"])
+    r["max_bandwidth_gbs"] = float(r["max_bandwidth_gbs"])
+    r["below_floor"] = r["below_floor"] == "1"
     r["gen_current"] = int(r["gen_current"])
     r["width_current"] = int(r["width_current"])
-    r["effective_bandwidth_gbs"] = float(r["effective_bandwidth_gbs"])
-    r["below_floor"] = r["below_floor"] == "1"
+    r["current_bandwidth_gbs"] = float(r["current_bandwidth_gbs"])
 
 power = parse_records(os.environ["POWER_LINES"], ["gpu", "name", "power_limit_w", "power_max_limit_w", "capped"])
 for r in power:

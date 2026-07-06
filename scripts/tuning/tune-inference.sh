@@ -144,15 +144,27 @@ fi
 step "STEP 3/4 — Calculating Tuned Parameters"
 
 # --- Model Selection ---------------------------------------------------------
-# Respect MODEL if already set in environment (e.g. exported by deploy.sh or
-# pre-set in deploy/.env). Fall back to the recommended default for 24 GB VRAM:
+# Respect MODEL if already set in environment or in the existing .env file.
+# Fall back to the recommended default for 24 GB VRAM:
 # Qwen2.5-Coder-14B-Instruct-AWQ — purpose-built for code generation, fits
 # comfortably on 2x RTX 3060 at AWQ quantization with TP=2.
-MODEL="${MODEL:-Qwen/Qwen2.5-Coder-14B-Instruct-AWQ}"
+if [[ -z "${MODEL:-}" ]]; then
+  ENV_MODEL="$(read_env_var MODEL)"
+  MODEL="${ENV_MODEL:-Qwen/Qwen2.5-Coder-14B-Instruct-AWQ}"
+fi
 
 # Served model name alias — what API clients put in the "model" field.
 # Avoids the slash in the HF ID that breaks some OpenAI-compatible clients.
-SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen2.5-coder-14b-awq}"
+# Derive from the MODEL value: strip the org prefix and lowercase.
+if [[ -z "${SERVED_MODEL_NAME:-}" ]]; then
+  ENV_SERVED_MODEL_NAME="$(read_env_var SERVED_MODEL_NAME)"
+  if [[ -n "${ENV_SERVED_MODEL_NAME}" ]]; then
+    SERVED_MODEL_NAME="${ENV_SERVED_MODEL_NAME}"
+  else
+    # Auto-derive: "Qwen/Qwen2.5-Coder-14B-Instruct-AWQ" → "qwen2.5-coder-14b-instruct-awq"
+    SERVED_MODEL_NAME="$(echo "${MODEL##*/}" | tr '[:upper:]' '[:lower:]')"
+  fi
+fi
 
 # --- Tensor Parallelism -------------------------------------------------------
 # Always match GPU count for full topology coverage.
@@ -236,7 +248,10 @@ HOST="0.0.0.0"   # inside container; host-side binding controlled by BIND_HOST
 PORT="${PORT:-8000}"
 
 # --- HuggingFace Cache -------------------------------------------------------
-HF_CACHE_DIR="${HOME}/.cache/huggingface"
+if [[ -z "${HF_CACHE_DIR:-}" ]]; then
+  ENV_HF_CACHE_DIR="$(read_env_var HF_CACHE_DIR)"
+  HF_CACHE_DIR="${ENV_HF_CACHE_DIR:-${HOME}/.cache/huggingface}"
+fi
 
 # Display calculated parameters
 echo ""
